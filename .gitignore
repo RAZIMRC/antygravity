@@ -1,0 +1,41 @@
+# dependencies
+node_modules/
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+.next/
+out/
+build/
+
+# misc
+.DS_Store
+*.pem
+*.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+
+# secrets (IMPORTANT)
+credentials.json
+*.jsonp
+*.sqlmin
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# project specific
+easypdfsa/.next/
+pdf-editor/.next/
+animationam/.next/
+pdf list/.next/

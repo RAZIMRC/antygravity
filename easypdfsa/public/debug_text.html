@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head><title>Debug Text Positions</title></head>
+<body style="margin:0;background:#111;color:#fff;font-family:monospace">
+<div id="container" style="position:relative;display:inline-block;margin:20px"></div>
+<pre id="log" style="padding:20px;font-size:11px;max-height:300px;overflow:auto"></pre>
+<script type="module">
+import * as pdfjsLib from '/node_modules/pdfjs-dist/build/pdfjs-dist/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
+const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+const response = await fetch('/test.pdf');
+const data = await response.arrayBuffer();
+const pdf = await pdfjsLib.getDocument({ data }).promise;
+const page = await pdf.getPage(1);
+
+const baseVP = page.getViewport({ scale: 1 });
+log(`Base viewport: ${baseVP.width.toFixed(1)} x ${baseVP.height.toFixed(1)}`);
+
+const containerWidth = 600;
+const baseScale = containerWidth / baseVP.width;
+const scale = baseScale;
+const viewport = page.getViewport({ scale });
+log(`Scale: ${scale.toFixed(4)}, Viewport: ${viewport.width.toFixed(1)} x ${viewport.height.toFixed(1)}`);
+
+const canvas = document.createElement('canvas');
+canvas.width = viewport.width;
+canvas.height = viewport.height;
+canvas.style.display = 'block';
+document.getElementById('container').appendChild(canvas);
+
+await page.render({ canvas, viewport }).promise;
+log('Rendered.');
+
+const textContent = await page.getTextContent();
+log(`Text items: ${textContent.items.length}`);
+
+const container = document.getElementById('container');
+let count = 0;
+for (const item of textContent.items) {
+  if (!('str' in item) || !item.str.trim()) continue;
+  const tx = item.transform;
+  const fontSize = Math.abs(tx[3]) || Math.abs(tx[0]) || 12;
+  const pdfX = tx[4];
+  const pdfY = tx[5];
+  
+  const [vpX, vpY] = viewport.convertToViewportPoint(pdfX, pdfY);
+  const [vpX2] = viewport.convertToViewportPoint(pdfX + item.width, pdfY);
+  const pixelW = Math.abs(vpX2 - vpX);
+  const pixelH = fontSize * scale;
+  
+  if (count < 15) {
+    log(`"${item.str}" => pdfXY(${pdfX.toFixed(1)}, ${pdfY.toFixed(1)}) => vpXY(${vpX.toFixed(1)}, ${vpY.toFixed(1)}) w=${pixelW.toFixed(1)} h=${pixelH.toFixed(1)}`);
+  }
+  
+  // Create overlay div
+  const div = document.createElement('div');
+  div.style.position = 'absolute';
+  div.style.left = vpX + 'px';
+  div.style.top = (vpY - pixelH) + 'px';
+  div.style.width = Math.max(pixelW, 10) + 'px';
+  div.style.height = Math.max(pixelH, 8) + 'px';
+  div.style.border = '1px solid rgba(56,189,248,0.5)';
+  div.style.cursor = 'pointer';
+  div.style.fontSize = (fontSize * scale) + 'px';
+  div.title = item.str;
+  div.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.value = item.str;
+    input.style.cssText = `position:absolute;left:${vpX}px;top:${vpY-pixelH}px;width:${Math.max(pixelW+40,80)}px;height:${Math.max(pixelH,14)}px;font-size:${fontSize*scale}px;border:2px solid #38BDF8;outline:none;background:white;color:black;z-index:100`;
+    container.appendChild(input);
+    input.focus();
+    input.addEventListener('blur', () => input.remove());
+  });
+  container.appendChild(div);
+  count++;
+}
+log(`Rendered ${count} text overlays`);
+</script>
+</body>
+</html>
