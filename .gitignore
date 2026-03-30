@@ -1,5 +1,7 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
 # dependencies
-node_modules/
+/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,30 +14,28 @@ node_modules/
 /coverage
 
 # next.js
-.next/
-out/
-build/
+/.next/
+/out/
+
+# production
+/build
 
 # misc
 .DS_Store
 *.pem
-*.log*
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files (can opt-in for committing if needed)
 .env*
 
-# secrets (IMPORTANT)
-credentials.json
-*.jsonp
-*.sqlmin
+# vercel
+.vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-# project specific
-easypdfsa/.next/
-pdf-editor/.next/
-animationam/.next/
-pdf list/.next/
