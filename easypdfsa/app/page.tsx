@@ -20,7 +20,23 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const [systemInitStatus, setSystemInitStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [systemInitStatus, setSystemInitStatus] = useState<'idle' | 'loading' | 'done' | 'hidden'>('idle');
+
+  // Check if system is already initialized
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      const checkInit = async () => {
+        const { count, error } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true });
+        
+        if (!error && count && count > 1) {
+          setSystemInitStatus('hidden');
+        }
+      };
+      checkInit();
+    }
+  }, [user]);
 
   // Guard: Redirect if not logged in
   useEffect(() => {
