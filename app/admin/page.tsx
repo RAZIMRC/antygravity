@@ -12,13 +12,18 @@ import {
   ComputerDesktopIcon,
   ClockIcon,
   DocumentIcon,
-  WrenchScrewdriverIcon
+  WrenchScrewdriverIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  PlusCircleIcon,
+  XMarkIcon
 } from "@heroicons/react/24/outline";
 
 type Profile = {
   id: string;
   email: string;
   role: string;
+  display_name: string;
   password?: string;
 };
 
@@ -37,11 +42,29 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [logSearch, setLogSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [resettingId, setResettingId] = useState<string | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [showPasswords, setShowPasswords] = useState<{ [key: string]: boolean }>({});
+  const [mounted, setMounted] = useState(false);
+  
+  // Managing users
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Form states
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    role: "employee",
+    displayName: ""
+  });
+  
+  const [editData, setEditData] = useState({
+    email: "",
+    role: "",
+    displayName: "",
+    newPassword: ""
+  });
 
   useEffect(() => {
+    setMounted(true);
     if (user?.role === "admin") {
       fetchData();
     }
@@ -64,21 +87,30 @@ export default function AdminPage() {
     }
   };
 
-  const togglePassword = (id: string) => {
-    setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const runSeeding = async () => {
-    if (!confirm("Are you sure you want to initialize the 5-user system (1 Admin, 4 Employees)? This will not delete existing users.")) return;
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.email || !formData.password) return alert("Email and Password are required");
+    
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/setup-system", { method: "POST" });
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify(formData)
+      });
+      
       if (res.ok) {
-        alert("System initialized successfully!");
+        alert("Member added successfully!");
+        setFormData({ email: "", password: "", role: "employee", displayName: "" });
+        setShowAddForm(false);
         fetchData();
       } else {
         const err = await res.json();
-        alert(err.error);
+        throw new Error(err.error || "Failed to create user");
       }
     } catch (err: any) {
       alert(err.message);
@@ -87,30 +119,77 @@ export default function AdminPage() {
     }
   };
 
-  const handleResetPassword = async (userId: string) => {
-    if (!newPassword) return alert("Please enter a new password");
-    
-    setResettingId(userId);
+  const handleUpdateUser = async (userId: string) => {
+    setLoading(true);
     try {
-      const res = await fetch("/api/admin/update-password", {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/admin/update-user", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, newPassword })
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ 
+          userId, 
+          email: editData.email,
+          role: editData.role,
+          displayName: editData.displayName,
+          password: editData.newPassword 
+        })
       });
       
       if (res.ok) {
-        alert("Password updated successfully!");
-        setNewPassword("");
-        setResettingId(null);
-        fetchData(); // Refresh to see updated password in profile table
+        alert("User updated successfully!");
+        setEditingId(null);
+        fetchData();
       } else {
         const err = await res.json();
-        throw new Error(err.error || "Failed to update password");
+        throw new Error(err.error || "Failed to update user");
       }
     } catch (err: any) {
       alert(err.message);
-      setResettingId(null);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm("Are you sure you want to delete this member? Access and profile data will be lost permanently.")) return;
+    
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ userId })
+      });
+      
+      if (res.ok) {
+        alert("Member deleted successfully!");
+        fetchData();
+      } else {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete user");
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEdit = (p: Profile) => {
+    setEditingId(p.id);
+    setEditData({
+      email: p.email,
+      role: p.role,
+      displayName: p.display_name || "",
+      newPassword: ""
+    });
   };
 
   if (user?.role !== "admin") {
@@ -145,12 +224,21 @@ export default function AdminPage() {
             <p className="text-sky-200/60 font-medium">Manage users and monitor system activity</p>
           </div>
         </div>
-        <button 
-          onClick={fetchData}
-          className="px-6 py-3 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 rounded-2xl text-sky-400 text-sm font-bold transition-all active:scale-95"
-        >
-          Refresh Data
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setShowAddForm(true)}
+            className="px-6 py-3 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-2xl text-emerald-400 text-sm font-bold transition-all flex items-center gap-2"
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Add Member
+          </button>
+          <button 
+            onClick={fetchData}
+            className="px-6 py-3 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 rounded-2xl text-sky-400 text-sm font-bold transition-all"
+          >
+            Refresh Data
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -158,79 +246,159 @@ export default function AdminPage() {
         <div className="lg:col-span-1 space-y-6">
           <div className="flex items-center gap-2 px-1">
             <KeyIcon className="w-5 h-5 text-sky-400" />
-            <h2 className="text-xl font-bold text-white">User Management</h2>
+            <h2 className="text-xl font-bold text-white">Member Management</h2>
           </div>
+
+          {/* Add User Form Section */}
+          {showAddForm && (
+            <div className="glass rounded-3xl p-6 border border-emerald-500/30 shadow-2xl animate-fade-in relative">
+              <button 
+                onClick={() => setShowAddForm(false)}
+                className="absolute top-4 right-4 text-sky-400/50 hover:text-white"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+              <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                <PlusCircleIcon className="w-4 h-4 text-emerald-400" />
+                Add New Member
+              </h3>
+              <form onSubmit={handleCreateUser} className="space-y-3">
+                <input 
+                  type="email" 
+                  placeholder="Email address"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-sky-200/20 focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  value={formData.email}
+                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                  required
+                />
+                <input 
+                  type="password" 
+                  placeholder="Password"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-sky-200/20 focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  required
+                />
+                <input 
+                  type="text" 
+                  placeholder="Employee Name"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-sky-200/20 focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  value={formData.displayName}
+                  onChange={e => setFormData({ ...formData, displayName: e.target.value })}
+                />
+                <select 
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500/50"
+                  value={formData.role}
+                  onChange={e => setFormData({ ...formData, role: e.target.value })}
+                >
+                  <option value="employee" className="bg-sky-950">Employee</option>
+                  <option value="admin" className="bg-sky-950">Admin</option>
+                </select>
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors disabled:opacity-50"
+                >
+                  Create Member Account
+                </button>
+              </form>
+            </div>
+          )}
           
           <div className="space-y-4">
             {profiles.map(p => (
-              <div key={p.id} className="glass rounded-3xl p-6 border border-white/5 space-y-4 shadow-xl">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-sky-500/10 rounded-xl flex items-center justify-center border border-sky-500/20">
-                      <UserGroupIcon className="w-6 h-6 text-sky-400" />
+              <div key={p.id} className={`glass rounded-3xl p-6 border ${editingId === p.id ? 'border-sky-500/50' : 'border-white/5'} transition-all space-y-4 shadow-xl`}>
+                {editingId === p.id ? (
+                  // Edit Form Mode
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Editing Member</span>
+                      <button onClick={() => setEditingId(null)} className="text-sky-200/40 hover:text-white"><XMarkIcon className="w-4 h-4" /></button>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-white leading-none mb-1">{p.email.split('@')[0]}</span>
-                      <span className="text-[10px] text-sky-400/60 font-bold uppercase tracking-widest">{p.role === 'admin' ? 'SYSTEM ADMIN' : 'EMPLOYEE'}</span>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${p.role === 'admin' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-sky-500/20 text-sky-400'}`}>
-                    {p.role}
-                  </span>
-                </div>
-
-                {/* Password Reference Display */}
-                <div className="bg-sky-500/5 rounded-xl p-3 border border-sky-500/10 flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold text-sky-400/60 uppercase tracking-widest">Active Password</span>
-                    <span className="text-xs font-mono text-sky-200 mt-1">
-                      {showPasswords[p.id] ? (p.password || "No reference") : "••••••••••••"}
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => togglePassword(p.id)}
-                    className="p-1.5 hover:bg-sky-500/10 rounded-lg transition-colors text-sky-400"
-                  >
-                    <ClockIcon className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                {p.email !== user?.email && (
-                  <div className="pt-2">
-                    <div className="relative group">
-                      <input 
-                        type="password" 
-                        placeholder="Change password..."
-                        className="w-full bg-black/10 border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white placeholder-sky-200/20 focus:outline-none focus:ring-1 focus:ring-sky-500/50"
-                        onChange={(e) => {
-                          setNewPassword(e.target.value);
-                          setResettingId(p.id);
-                        }}
-                        disabled={resettingId === p.id && loading}
-                      />
+                    <input 
+                      type="text" 
+                      placeholder="Display Name"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
+                      value={editData.displayName}
+                      onChange={e => setEditData({ ...editData, displayName: e.target.value })}
+                    />
+                    <input 
+                      type="email" 
+                      placeholder="Email"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
+                      value={editData.email}
+                      onChange={e => setEditData({ ...editData, email: e.target.value })}
+                    />
+                    <input 
+                      type="password" 
+                      placeholder="New password (blank to keep)"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
+                      value={editData.newPassword}
+                      onChange={e => setEditData({ ...editData, newPassword: e.target.value })}
+                    />
+                    <select 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
+                      value={editData.role}
+                      onChange={e => setEditData({ ...editData, role: e.target.value })}
+                    >
+                      <option value="employee" className="bg-sky-950">Employee</option>
+                      <option value="admin" className="bg-sky-950">Admin</option>
+                    </select>
+                    <div className="flex gap-2 pt-2">
                       <button 
-                        onClick={() => handleResetPassword(p.id)}
-                        disabled={loading || resettingId !== p.id || !newPassword}
-                        className="absolute right-2 top-2 px-3 py-1 bg-sky-500 rounded-lg text-[10px] font-black text-white hover:bg-sky-400 transition-colors disabled:opacity-30"
+                        onClick={() => handleUpdateUser(p.id)}
+                        className="flex-1 py-2 bg-sky-500 rounded-lg text-[10px] font-black text-white hover:bg-sky-400"
                       >
-                        Update
+                        Save Changes
                       </button>
                     </div>
                   </div>
+                ) : (
+                  // View Display Mode
+                  <>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-sky-500/10 rounded-xl flex items-center justify-center border border-sky-500/20">
+                          <UserGroupIcon className="w-6 h-6 text-sky-400" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-white leading-none mb-1">{p.display_name || p.email.split('@')[0]}</span>
+                          <span className="text-[10px] text-sky-400/60 font-bold tracking-tight lowercase">{p.email}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${p.role === 'admin' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-sky-500/20 text-sky-400'}`}>
+                          {p.role}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                      <button 
+                        onClick={() => startEdit(p)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-sky-200/60 text-[10px] font-black uppercase tracking-widest transition-all"
+                      >
+                        <PencilSquareIcon className="w-4 h-4" />
+                        Edit
+                      </button>
+                      {p.email !== user?.email && (
+                        <button 
+                          onClick={() => handleDeleteUser(p.id)}
+                          className="px-3 py-2 bg-red-500/5 hover:bg-red-500/20 border border-red-500/10 rounded-xl text-red-400/60 hover:text-red-400 transition-all"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             ))}
             
-            {profiles.length < 5 && (
+            {profiles.length < 1 && (
               <div className="p-8 border-2 border-dashed border-sky-500/20 rounded-3xl flex flex-col items-center justify-center text-center space-y-4">
                 <WrenchScrewdriverIcon className="w-8 h-8 text-sky-500/40" />
-                <p className="text-xs text-sky-200/40">Missing member accounts?</p>
-                <button 
-                  onClick={runSeeding}
-                  className="px-6 py-2 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/20 rounded-xl text-sky-300 text-[10px] font-black uppercase tracking-widest transition-all"
-                >
-                  Seed 5-User System
-                </button>
+                <p className="text-xs text-sky-200/40">No members found</p>
               </div>
             )}
           </div>
@@ -302,8 +470,12 @@ export default function AdminPage() {
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex flex-col items-end">
-                          <span className="text-[10px] font-bold text-white/80">{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          <span className="text-[9px] text-sky-400/40 uppercase font-bold mt-0.5">{new Date(log.created_at).toLocaleDateString()}</span>
+                          <span className="text-[10px] font-bold text-white/80">
+                            {mounted ? new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                          </span>
+                          <span className="text-[9px] text-sky-400/40 uppercase font-bold mt-0.5">
+                            {mounted ? new Date(log.created_at).toLocaleDateString() : '--/--/----'}
+                          </span>
                         </div>
                       </td>
                     </tr>
