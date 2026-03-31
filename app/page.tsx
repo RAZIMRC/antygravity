@@ -188,7 +188,8 @@ export default function HomePage() {
     setDownloadUrl(null);
   };
 
-  if (authLoading) {
+  // Optimization: Only show spinner if we have NO user AND are loading
+  if (authLoading && !user) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="h-12 w-12 border-4 border-sky-500/20 border-t-sky-500 rounded-full animate-spin" />

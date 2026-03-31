@@ -27,40 +27,64 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const router = useRouter();
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('role, email')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role, email')
+        .eq('id', userId)
+        .single();
+        
+      if (error || !data) return null;
       
-    if (error) {
-      console.error('Profile fetch error:', error);
+      const profile = { id: userId, email: data.email, role: data.role as UserRole };
+      
+      // OPTIMIZATION: Cache profile locally for next load
+      localStorage.setItem('pdfsa_profile', JSON.stringify(profile));
+      return profile;
+    } catch (err) {
+      console.error('Profile fetch error:', err);
       return null;
     }
-    return { id: userId, email: data.email, role: data.role as UserRole };
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth event:", event);
-      if (session?.user) {
-        const profile = await fetchProfile(session.user.id);
-        setUser(profile);
-      } else {
-        setUser(null);
+    // 1. OPTIMISTIC LOAD: Check local cache first to avoid initial spinner
+    const cached = localStorage.getItem('pdfsa_profile');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        setUser(parsed);
+      } catch (e) {
+        localStorage.removeItem('pdfsa_profile');
       }
-      setLoading(false);
-    });
+    }
 
-    // Check initial session
-    (async () => {
+    // 2. Verified Load & Sync
+    const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const profile = await fetchProfile(session.user.id);
-        setUser(profile);
+        if (profile) setUser(profile);
+      } else {
+        setUser(null);
+        localStorage.removeItem('pdfsa_profile');
       }
       setLoading(false);
-    })();
+    };
+
+    initAuth();
+
+    // 3. Listener for session changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const profile = await fetchProfile(session.user.id);
+        setUser(profile);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        localStorage.removeItem('pdfsa_profile');
+      }
+      setLoading(false);
+    });
 
     return () => subscription.unsubscribe();
   }, []);
@@ -70,21 +94,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (error) throw error;
     
     if (data.session?.user) {
-      console.log("Sign-in successful, fetching profile...");
       const profile = await fetchProfile(data.session.user.id);
       setUser(profile);
-      
-      // Give a tiny moment for cookies to stabilize before redirecting
-      setTimeout(() => {
-        router.push('/');
-        router.refresh();
-      }, 500);
+      // Removed the 500ms delay and router.refresh() for instant transition
+      router.push('/');
     }
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    localStorage.removeItem('pdfsa_profile');
     router.push('/login');
     router.refresh();
   };
