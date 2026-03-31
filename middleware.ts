@@ -62,14 +62,11 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
 
-    // Role check
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
+    // 3. High-speed Role check via JWT metadata
+    // This avoids a database query on every request to /admin
+    const role = user.user_metadata?.role;
 
-    if (!profile || profile.role !== 'admin') {
+    if (role !== "admin") {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }
